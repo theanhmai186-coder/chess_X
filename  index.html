@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THE ANH - Chess Platform</title>
+    
+    <link rel="icon" type="image/png" href="logo.png">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+    <link rel="stylesheet" href="style.css">
+
+    
+</head>
+<body>
+
+    <!-- HEADER (Đã sửa lỗi thiếu thẻ đóng) -->
+    <div class="top-bar fade-in-down">
+            <div class="brand">
+        <h1>THE ANH CHESS</h1>
+        <span>Pursuing Perfection</span>
+    </div>
+        
+        <div class="settings-panel">
+            <div class="setting-item">
+                <label>Mode</label>
+                <select id="gameMode">
+                    <option value="computer">Vs Computer</option>
+                    <option value="human">2 Players</option>
+                </select>
+            </div>
+            <div class="setting-item">
+                <label>Level</label>
+                <select id="engineLevel">
+                    <option value="20">Lvl 1 - 1 tuổi</option>
+                    <option value="5">Lvl 5 - Mới tập chơi cờ</option>
+                    <option value="10" selected>Lvl 10 - Giải nhất cấp Quận</option>
+                    <option value="15">Lvl 15 - The Zeal</option>
+                    <option value="20">Lvl 20 - Zv6</option>
+                </select>
+            </div>
+
+            <div class="setting-item">
+                <label>Play As</label>
+                <select id="playerSide">
+                    <option value="w">Trắng (White)</option>
+                    <option value="b">Đen (Black)</option>
+                    <option value="random">Ngẫu nhiên (Random)</option>
+                </select>
+            </div>
+
+            <div class="setting-item">
+                <label>Time (Min)</label>
+                <input type="number" id="timeBase" value="10" min="1">
+            </div>
+            
+            <div class="setting-item">
+                <label>Inc (Sec)</label>
+                <input type="number" id="timeIncrement" value="5" min="0">
+            </div>
+            
+            <!-- Nút NEW GAME giữ nguyên -->
+            <button id="applySettingsBtn" class="new-game-btn">VÁN ĐẤU MỚI</button>
+            
+            
+
+        </div>
+    </div> <!-- THẺ NÀY TRƯỚC ĐÂY BỊ THIẾU -->
+
+    <!-- MAIN INTERFACE -->
+    <div class="main-container">
+        
+        <!-- LEFT: BOARD -->
+        <div class="board-card fade-in-left">
+            
+            <!-- Phần hiển thị của Đối thủ (Luôn nằm trên) -->
+            <div class="player-info top">
+                <div class="details">
+                    <h2 class="name">Opponent <span class="rating"></span></h2>
+                    <!-- Bỏ ID cố định, JS sẽ tự điền -->
+                    <div class="captured-list"></div> 
+                </div>
+                <!-- Bỏ ID cố định, JS sẽ tự điền -->
+                <div class="digital-clock">10:00</div>
+            </div>
+
+            <div class="board-wrapper">
+                 <div id="myBoard"></div>
+            </div>
+
+            <!-- Phần hiển thị của Bạn (Luôn nằm dưới) -->
+            <div class="player-info bottom">
+                <div class="details">
+                    <h2 class="name">You <span class="rating"></span></h2>
+                    <!-- Bỏ ID cố định, JS sẽ tự điền -->
+                    <div class="captured-list"></div> 
+                </div>
+                <!-- Bỏ ID cố định, JS sẽ tự điền -->
+                <div class="digital-clock">10:00</div>
+            </div>
+            
+        </div>
+
+        <!-- RIGHT: SIDEBAR -->
+        <div class="sidebar-card fade-in-right">
+            <div class="panel-box graph-area">
+                <div class="graph-placeholder"></div>
+            </div>
+
+            <div class="panel-box log-wrapper">
+                
+                <!-- Khu vực chữ cuộn lên xuống (Giữ nguyên class log-area để code JS cuộn tự động không bị lỗi) -->
+                <div class="log-area">
+                    <div id="moveLogText" class="log-content">1. Sẵn sàng...</div>
+                </div>
+
+                <!-- Nút Tải nổi (Floating Button) -->
+                <button id="downloadPgnBtn" class="floating-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                </button>
+
+            </div>
+
+            <div class="control-grid">
+                <button id="prevBtn" class="big-btn" title="Undo Move">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                </button>
+                
+                <button id="middleBtn" class="big-btn main" title="Đi lại">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+                </button>
+                
+                <button id="nextBtn" class="big-btn" title="Redo Move">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+                </button>
+            </div>
+
+            <div id="gameStatus" class="status-footer">Đến lượt trắng</div>
+        </div>
+
+    </div>
+
+    <div id="confirmModal" class="modal-overlay">
+        <div class="modal-box">
+            <h3 class="modal-title" id="modalTitle">BẠN SỢ À?</h3>
+            <p class="modal-desc" id="modalDesc">Tôi biết bạn sẽ từ bỏ nhưng tôi không ngờ điều đó lại đến sớm vậy.</p>
+
+            <div class="modal-actions">
+                <button id="modalCancel" class="modal-btn cancel">Hủy bỏ</button>
+                <button id="modalConfirm" class="modal-btn confirm">Đồng ý</button>
+            </div>
+        </div>
+    </div>
+
+   <!-- CHỈ DÙNG 1 FOOTER NÀY THÔI -->
+    <footer class="site-footer fade-in-down">
+        <div class="footer-container">
+            <!-- Phần Brand -->
+            <div class="footer-brand">
+                <h2 class="footer-logo">THE ANH</h2>
+                <span class="footer-slogan">Pursuing Perfection</span>
+            </div>
+
+            <!-- Phần Thông tin liên hệ -->
+            <div class="footer-contact">
+                <ul>
+                    <li><span class="label">Author:</span> <span class="value">Mai Thế Anh</span></li>
+                    <li><span class="label">Email:</span> <a href="mailto:theanhmai461@gmail.com" class="value link">theanhmai461@gmail.com</a></li>
+                    <li><span class="label">Phone:</span> <a href="tel:+84907973809" class="value link">+84 907973809</a></li>
+                    <li><span class="label">Review:</span> <a href="https://forms.gle/vaGztcuZzq5NYW1u8" target="_blank" class="value link highlight">Đánh giá hệ thống</a></li>
+                </ul>
+            </div>
+
+            <!-- Phần Copyright -->
+            <div class="footer-bottom">
+                <p>Copyright © 2026 The Anh Chess</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Các thẻ script giữ nguyên bên dưới -->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
