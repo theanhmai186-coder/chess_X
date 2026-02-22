@@ -30,15 +30,15 @@ var selectedSquare = null;
 
 // Audio
 const sounds = {
-    move: new Audio('sounds/move.mp3'),
-    capture: new Audio('sounds/capture.mov'),
-    notify: new Audio('sounds/Time out.mp3'),
+    move: new Audio('move.mp3'),
+    capture: new Audio('capture.mov'),
+    notify: new Audio('Time out.mp3'),
     // Âm thanh riêng biệt cho UI
-    btnClick: new Audio('sounds/button.wav'), // Âm thanh cho nút bấm
-    labelClick: new Audio('sounds/piece-click.mp3.mov'),  // Âm thanh cho các nhãn (Label)
-    check: new Audio('sounds/check.mp3'),   
-    castle: new Audio('sounds/move.mp3'),
-    illegal: new Audio('sounds/illegal.wav')   
+    btnClick: new Audio('button.wav'), // Âm thanh cho nút bấm
+    labelClick: new Audio('piece-click.mp3.mov'),  // Âm thanh cho các nhãn (Label)
+    check: new Audio('check.mp3'),   
+    castle: new Audio('move.mp3'),
+    illegal: new Audio('illegal.wav')   
 };
 
 sounds.labelClick.volume = 0.3;
