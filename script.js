@@ -29,9 +29,11 @@ var redoStack = []; // Lưu trữ các nước đi để Redo (Tiến lên)
 var selectedSquare = null;
 
 var isOnline = false;
-var socket = io("https://chess-online-server-ee2y.onrender.com"); // Kết nối tới server Node.js
+var socket = io("https://chess-online-server.onrender.com"); // Kết nối tới server Node.js
 var roomId = null;
 var myRole = null; // 'w' hoặc 'b'
+var isReconnecting = false; // Đang kết nối lại ván cũ
+var disconnectCountdownInterval = null; // Interval hiển thị đếm ngược thoát
 // Audio
 const sounds = {
     move: new Audio('sounds/move.mp3'),
@@ -164,20 +166,25 @@ function onDragStart(source, piece) {
     if (game.game_over()) {
         let currentHistoryLength = gameActive ? game.history().length : originalHistory.length;
         if (currentViewIndex !== -1 && currentViewIndex < currentHistoryLength - 1) {
-            return false; // Trả về false để block việc kéo quân
+            return false;
         }
-        // Sau khi kết thúc ván, cho phép cầm bất cứ quân nào để phân tích
         return true; 
     }
 
+    // Chế độ online: chỉ cho kéo quân của mình và đúng lượt
     if (isOnline) {
-    if (game.turn() !== myRole) return false;
-    if ((myRole === 'w' && piece.search(/^b/) !== -1) ||
-        (myRole === 'b' && piece.search(/^w/) !== -1)) return false;
-    return true;
+        if (!gameActive) return false;
+        if (game.turn() !== myRole) return false;
+        if ((myRole === 'w' && piece.search(/^b/) !== -1) ||
+            (myRole === 'b' && piece.search(/^w/) !== -1)) return false;
+        playSound(sounds.labelClick);
+        removeHighlights();
+        selectedSquare = source;
+        showDots(source);
+        return true;
     }
     
-    // Logic cũ cho khi đang trong ván đấu...
+    // Logic cho chế độ local
     if (currentMode === 'human') {
         if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
             (game.turn() === 'b' && piece.search(/^w/) !== -1)) return false;
@@ -213,6 +220,8 @@ function isValidPremove(source, target) {
 
 function onDrop(source, target) {
     if (source === target) return;
+
+    // Chế độ online: chặn đi khi không phải lượt mình
     if (isOnline && game.turn() !== myRole) return 'snapback';
 
     var move = game.move({ from: source, to: target, promotion: 'q' });
@@ -227,7 +236,8 @@ function onDrop(source, target) {
 
     if (move !== null && gameActive) {
             if (isOnline) {
-            socket.emit('move', { roomId: roomId, move: move });
+            // Gửi kèm FEN để server lưu trạng thái cho reconnect
+            socket.emit('move', { roomId: roomId, move: move, fen: game.fen() });
         }
         removeHighlights();
         premove = null;
@@ -329,8 +339,8 @@ function handleMoveMade(move) {
 
     if (typeof updateMaterial === "function") updateMaterial();
     
-    // Cộng giờ (Increment)
-    if (increment > 0) {
+    // Cộng giờ (Increment) - chỉ khi không phải online (server tự xử lý)
+    if (increment > 0 && !isOnline) {
         if (game.turn() === 'w') blackTime += increment; 
         else whiteTime += increment;
     }
@@ -441,14 +451,18 @@ function redoMove() {
 function updateStatus() {
     if (game.in_checkmate()) {
         let winner = game.turn() === 'w' ? "ĐEN" : "TRẮNG";
-        let score = game.turn() === 'w' ? "0-1" : "1-0"; // Trắng bị chiếu bí -> Đen thắng
+        let score = game.turn() === 'w' ? "0-1" : "1-0";
+        if (isOnline) socket.emit('clientGameOver', { roomId });
         endGame(`CHIẾU HẾT! ${winner} THẮNG`, "Một ván cờ tuyệt vời. Bạn có muốn phục thù không?", score);
     } else if (game.in_draw()) {
         if (game.in_stalemate()) {
+            if (isOnline) socket.emit('clientGameOver', { roomId });
             endGame("HÒA CỜ (HẾT NƯỚC ĐI)", "Sự may mắn của bạn có lẽ đã được dồn hết vào ván đấu này! Chơi lại ván mới nhá?", "½-½");
         } else if (game.in_threefold_repetition()) {
+            if (isOnline) socket.emit('clientGameOver', { roomId });
             endGame("HÒA CỜ (LẶP LẠI 3 LẦN)", "Hai bên lặp lại thế cờ quá 3 lần. Chơi lại ván mới nhé?", "½-½");
         } else {
+            if (isOnline) socket.emit('clientGameOver', { roomId });
             endGame("HÒA CỜ!", "Ván đấu kết thúc với tỷ số hòa. Làm lại ván mới nhá?", "½-½");
         }
     } else {
@@ -536,6 +550,9 @@ function stepForward() {
 }
 
 function startTimer() {
+    // Chế độ online: Server quản lý đồng hồ, không chạy timer client
+    if (isOnline) return;
+
     if (timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(() => {
         if (!gameActive) return;
@@ -722,51 +739,7 @@ function resetGame() {
         draggable: true,
         position: 'start',
         orientation: playerSide === 'w' ? 'white' : 'black', // Xoay bàn cờ
-        pieceTheme: 'https://chessboardjs.com/img/chesspieces/chesscom/{piece}.png',
-        onDragStart: onDragStart,
-        onDrop: onDrop,
-        onSnapEnd: function() { board.position(game.fen()); }
-    });
-    
-    resizeBoard();
-
-
-
-    // 5. Nếu chơi quân Đen với máy, máy (Trắng) sẽ đi trước
-    if (currentMode === 'computer' && playerSide === 'b') {
-        setTimeout(askEngine, 1000);
-    }
-
-    // Tiêm dữ liệu vào giao diện TOP (Đối thủ)
-    $('.player-info.top .name').html(topName);
-    $('.player-info.top .digital-clock').attr('id', topTimer);
-    $('.player-info.top .captured-list').attr('id', topCaptured);
-
-    // Tiêm dữ liệu vào giao diện BOTTOM (Bạn)
-    $('.player-info.bottom .name').html(bottomName);
-    $('.player-info.bottom .digital-clock').attr('id', bottomTimer);
-    $('.player-info.bottom .captured-list').attr('id', bottomCaptured);
-
-    // BẮT BUỘC: Cập nhật lại biến jQuery sau khi đổi ID để đồng hồ chạy đúng
-    $whiteTimer = $('#whiteTimer');
-    $blackTimer = $('#blackTimer');
-
-    // Dọn dẹp thời gian cũ
-    if (timerInterval) clearInterval(timerInterval);
-    timerInterval = null;
-    
-    updateTimers();
-    updateMoveLog();
-    if (typeof updateMaterial === 'function') updateMaterial();
-    $status.text("Đến trắng đi");
-
-    // 4. Khởi tạo bàn cờ với hướng (Orientation) đúng
-    if (board) board.destroy();
-    board = Chessboard('myBoard', {
-        draggable: true,
-        position: 'start',
-        orientation: playerSide === 'w' ? 'white' : 'black', // Xoay bàn cờ
-        pieceTheme: 'https://chessboardjs.com/img/chesspieces/chesscom/{piece}.png',
+        pieceTheme: 'mypiece/{piece}.png',
         onDragStart: onDragStart,
         onDrop: onDrop,
         onSnapEnd: function() { board.position(game.fen()); }
@@ -783,33 +756,34 @@ function resetGame() {
 
     // CHƠI VỚI BẠN BÈ
     if (currentMode === 'online') {
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    roomId = urlParams.get('room') || Math.random().toString(36).substring(2, 9);
-    
-    if (!window.location.search.includes('room')) {
-        const inviteLink = window.location.origin + window.location.pathname + '?room=' + roomId;
-        window.history.pushState({}, '', inviteLink);
+        isOnline = true;
+        gameActive = false; // Chờ server gửi startGame mới bắt đầu
 
-        // Hiển thị UI đẹp hơn thay vì alert
-        $('#gameStatus').html(
-            `⏳ Đang chờ bạn bè... <br>
-            <small style="font-size:12px; color: var(--accent-gold);">
-                Link mời: <a href="${inviteLink}" style="color:var(--accent-gold)" onclick="navigator.clipboard.writeText('${inviteLink}'); return false;">${inviteLink}</a>
-                <button onclick="navigator.clipboard.writeText('${inviteLink}'); this.textContent='✅ Đã chép!'" 
-                    style="margin-left:8px; font-size:11px; padding:2px 8px; cursor:pointer; background:var(--panel-color); color:var(--accent-gold); border:1px solid var(--accent-gold); border-radius:4px;">
-                    📋 Sao chép
-                </button>
-            </small>`
-        );
+        const urlParams = new URLSearchParams(window.location.search);
+        const existingRoom = urlParams.get('room');
+
+        if (existingRoom) {
+            // Người vào qua link mời (hoặc tải lại trang khi đã có phòng)
+            roomId = existingRoom;
+        } else {
+            // Tạo phòng mới - sinh roomId mới mỗi lần
+            roomId = Math.random().toString(36).substring(2, 9);
+            const inviteLink = window.location.origin + window.location.pathname + '?room=' + roomId;
+            window.history.pushState({}, '', inviteLink);
+        }
+
+        // Tham gia phòng, gửi kèm cài đặt thời gian
+        socket.emit('joinRoom', { roomId: roomId, baseTime: whiteTime, increment: increment });
+
+        $status.html('⏳ Đang chờ đối thủ...');
+
+    } else {
+        isOnline = false;
+        // Xóa ?room= khỏi URL nếu chuyển về chế độ local
+        if (window.location.search.includes('room')) {
+            window.history.pushState({}, '', window.location.pathname);
+        }
     }
-    
-    socket.emit('joinRoom', roomId);
-    isOnline = true;
-} else {
-    isOnline = false;
-}
-
 }
 
 
@@ -1052,45 +1026,163 @@ $(document).ready(function() {
         boardEl.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
     }
 
-    setTimeout(resetGame, 200);
+    // ── Khởi động game - tự động detect online nếu URL có ?room= ────────────
+    (function initGame() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const existingRoom = urlParams.get('room');
+        if (existingRoom) {
+            // Tải lại trang khi đang chơi online → tự vào lại phòng cũ
+            $('#gameMode').val('online');
+            setTimeout(resetGame, 200);
+        } else {
+            // Bình thường
+            setTimeout(resetGame, 200);
+        }
+    })();
 
-    socket.on('opponentMove', function(move) {
-    game.move(move);
-    board.position(game.fen());
-    handleMoveMade(move); // Gọi lại hàm xử lý âm thanh/log của bạn
+    // ── SOCKET EVENTS ────────────────────────────────────────────────────────
+
+    // Đang chờ đối thủ
+    socket.on('waitingForOpponent', function() {
+        const inviteLink = window.location.origin + window.location.pathname + '?room=' + roomId;
+        $status.html(
+            `⏳ Đang chờ bạn bè vào...<br>
+            <span style="font-size:12px; color:var(--accent-gold);">
+                <a href="${inviteLink}" style="color:var(--accent-gold);">${inviteLink}</a>
+                &nbsp;
+                <button onclick="navigator.clipboard.writeText('${inviteLink}'); this.textContent='✅ Đã chép!'"
+                    style="font-size:11px; padding:2px 8px; cursor:pointer; background:var(--panel-color);
+                           color:var(--accent-gold); border:1px solid var(--accent-gold); border-radius:4px;">
+                    📋 Sao chép link
+                </button>
+            </span>`
+        );
     });
 
+    // Phòng đã đầy
+    socket.on('roomFull', function() {
+        $status.html('<span style="color:#ff4d4d;">❌ Phòng này đã đầy!</span>');
+        isOnline = false;
+    });
+
+    // Ván bắt đầu
+    socket.on('startGame', function(data) {
+        if (data && data.timers) {
+            whiteTime = data.timers.w;
+            blackTime = data.timers.b;
+        }
+        if (data && data.increment !== undefined) {
+            increment = data.increment;
+        }
+        gameActive = true;
+        updateTimers();
+        $status.text('Ván đấu bắt đầu! Đến lượt Trắng');
+        playSound(sounds.notify);
+        // Xóa thông báo link mời
+        $('#invite-panel').remove();
+    });
+
+    // Nhận vai (trắng/đen)
     socket.on('playerRole', function(role) {
-    myRole = role;
-    playerSide = role; // ← THÊM DÒNG NÀY để timer/logic nhận diện đúng phe
-    if (role === 'b') {
-        board.orientation('black');
-    } else {
-        board.orientation('white');
-    }
+        myRole = role;
+        playerSide = role;
+        if (role === 'b') {
+            board.orientation('black');
+            // Cập nhật tên hiển thị
+            $('.player-info.bottom .name').html('Black Player <span class="rating">(You)</span>');
+            $('.player-info.top .name').html('White Player <span class="rating">(Opponent)</span>');
+        } else {
+            board.orientation('white');
+            $('.player-info.bottom .name').html('White Player <span class="rating">(You)</span>');
+            $('.player-info.top .name').html('Black Player <span class="rating">(Opponent)</span>');
+        }
     });
 
-    socket.on('startGame', function() {
-    gameActive = true;
-    $status.text("Ván đấu bắt đầu! Đến lượt Trắng");
-    playSound(sounds.notify);
+    // Nhận nước đi từ đối thủ
+    socket.on('opponentMove', function(move) {
+        var result = game.move(move);
+        if (result) {
+            board.position(game.fen());
+            handleMoveMade(result);
+        }
     });
 
-    socket.on('disconnect', function() {
-    if (isOnline && gameActive) {
-        endGame("ĐỐI THỦ ĐÃ THOÁT", "Bạn thắng vì đối thủ đã rời khỏi ván đấu.", "1-0");
-    }
+    // Đồng bộ đồng hồ từ server (chạy mỗi giây)
+    socket.on('timerSync', function(data) {
+        whiteTime = data.w;
+        blackTime = data.b;
+        updateTimers();
     });
 
-    socket.on('opponentLeft', function() {
-    if (isOnline && gameActive) {
-        endGame("ĐỐI THỦ ĐÃ THOÁT", "Bạn thắng vì đối thủ đã rời khỏi ván đấu.", "1-0");
-    }
+    // Đối thủ ngắt kết nối - hiện đếm ngược dưới tên
+    socket.on('opponentDisconnected', function(data) {
+        var countdown = data.countdown;
+        var opponentRole = data.role;
+        // Xác định đây là top hay bottom player
+        var $opponentInfo = $('.player-info.top');
+        $opponentInfo.find('.disconnect-countdown').remove();
+        $opponentInfo.find('.name').after(
+            `<span class="disconnect-countdown" id="disconnect-countdown"
+                style="display:block; font-size:12px; color:#ff6b6b; margin-top:2px;">
+                ⚠️ Tự động thua sau: <strong>${countdown}s</strong>
+            </span>`
+        );
+        playSound(sounds.notify);
+        $status.html('<span style="color:#ffaa00;">⏸ Đối thủ mất kết nối, đang chờ...</span>');
     });
 
-});
+    // Cập nhật số giây đếm ngược
+    socket.on('reconnectCountdown', function(data) {
+        var $cd = $('#disconnect-countdown');
+        if ($cd.length) {
+            $cd.html(`⚠️ Tự động thua sau: <strong>${data.countdown}s</strong>`);
+        }
+    });
 
-   
+    // Đối thủ kết nối lại thành công
+    socket.on('opponentReconnected', function() {
+        $('#disconnect-countdown').remove();
+        $status.text('▶ Đối thủ đã kết nối lại!');
+        playSound(sounds.notify);
+    });
+
+    // Khôi phục ván đấu khi tải lại trang
+    socket.on('reconnectState', function(data) {
+        if (!data || !data.fen) return;
+
+        // Dựng lại ván cờ từ history
+        game.reset();
+        if (data.history && data.history.length > 0) {
+            data.history.forEach(function(move) {
+                game.move(move);
+            });
+        }
+
+        board.position(game.fen());
+        whiteTime = data.timers.w;
+        blackTime = data.timers.b;
+        increment = data.increment || 0;
+        gameActive = data.active;
+
+        updateTimers();
+        updateMoveLog();
+        updateStatus();
+        updateMaterial();
+
+        currentViewIndex = game.history().length - 1;
+        $status.html('<span style="color:#4caf50;">✅ Đã kết nối lại ván đấu!</span>');
+        setTimeout(function() { updateStatus(); }, 2000);
+        playSound(sounds.notify);
+    });
+
+    // Server kết thúc ván (hết giờ, đối thủ bỏ cuộc)
+    socket.on('serverGameOver', function(data) {
+        $('#disconnect-countdown').remove();
+        endGame(data.title, 'Ván đấu kết thúc.', data.score || '');
+    });
+
+}); // end $(document).ready
+
 
 // 1. Chặn chuột phải
 document.addEventListener('contextmenu', event => event.preventDefault());
