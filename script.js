@@ -722,7 +722,7 @@ function resetGame() {
         draggable: true,
         position: 'start',
         orientation: playerSide === 'w' ? 'white' : 'black', // Xoay bàn cờ
-        pieceTheme: 'mypiece/{piece}.png',
+        pieceTheme: 'https://chessboardjs.com/img/chesspieces/chesscom/{piece}.png',
         onDragStart: onDragStart,
         onDrop: onDrop,
         onSnapEnd: function() { board.position(game.fen()); }
@@ -766,7 +766,7 @@ function resetGame() {
         draggable: true,
         position: 'start',
         orientation: playerSide === 'w' ? 'white' : 'black', // Xoay bàn cờ
-        pieceTheme: 'mypiece/{piece}.png',
+        pieceTheme: 'https://chessboardjs.com/img/chesspieces/chesscom/{piece}.png',
         onDragStart: onDragStart,
         onDrop: onDrop,
         onSnapEnd: function() { board.position(game.fen()); }
