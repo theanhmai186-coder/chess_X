@@ -739,7 +739,7 @@ function resetGame() {
         draggable: true,
         position: 'start',
         orientation: playerSide === 'w' ? 'white' : 'black', // Xoay bàn cờ
-        pieceTheme: 'https://chessboardjs.com/img/chesspieces/chesscom/{piece}.png',
+        pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
         onDragStart: onDragStart,
         onDrop: onDrop,
         onSnapEnd: function() { board.position(game.fen()); }
@@ -763,19 +763,29 @@ function resetGame() {
         const existingRoom = urlParams.get('room');
 
         if (existingRoom) {
-            // Người vào qua link mời (hoặc tải lại trang khi đã có phòng)
+            // Tải lại trang / vào bằng link mời
             roomId = existingRoom;
+            $status.html('<span style="color:var(--accent-gold);">⏳ Đang kết nối lại phòng...</span>');
         } else {
-            // Tạo phòng mới - sinh roomId mới mỗi lần
+            // Tạo phòng mới
             roomId = Math.random().toString(36).substring(2, 9);
             const inviteLink = window.location.origin + window.location.pathname + '?room=' + roomId;
             window.history.pushState({}, '', inviteLink);
+
+            // Hiển thị link mời NGAY LẬP TỨC
+            $status.html(
+                '<span>⏳ Đang chờ bạn bè vào...</span><br>' +
+                '<span style="font-size:12px; color:var(--accent-gold); line-height:2.2; display:block; margin-top:4px;">' +
+                '<span style="opacity:0.7;">Link mời: </span>' +
+                '<a href="' + inviteLink + '" style="color:var(--accent-gold); word-break:break-all;">' + inviteLink + '</a>' +
+                ' <button onclick="navigator.clipboard.writeText(\'' + inviteLink + '\').then(function(){this.textContent=\'✅ Đã chép!\';var b=this;setTimeout(function(){b.textContent=\'📋 Sao chép\'},2000)}.bind(this))" ' +
+                'style="font-size:11px;padding:3px 10px;cursor:pointer;background:var(--panel-color);color:var(--accent-gold);border:1px solid var(--accent-gold);border-radius:4px;margin-left:4px;">' +
+                '📋 Sao chép</button></span>'
+            );
         }
 
         // Tham gia phòng, gửi kèm cài đặt thời gian
         socket.emit('joinRoom', { roomId: roomId, baseTime: whiteTime, increment: increment });
-
-        $status.html('⏳ Đang chờ đối thủ...');
 
     } else {
         isOnline = false;
