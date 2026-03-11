@@ -28,17 +28,21 @@ var redoStack = []; // Lưu trữ các nước đi để Redo (Tiến lên)
 // Selection State
 var selectedSquare = null;
 
+var isOnline = false;
+var socket = io("https://chess-online-server-ee2y.onrender.com"); // Kết nối tới server Node.js
+var roomId = null;
+var myRole = null; // 'w' hoặc 'b'
 // Audio
 const sounds = {
-    move: new Audio('move.mp3'),
-    capture: new Audio('capture.mov'),
-    notify: new Audio('Time out.mp3'),
+    move: new Audio('sounds/move.mp3'),
+    capture: new Audio('sounds/capture.mov'),
+    notify: new Audio('sounds/Time out.mp3'),
     // Âm thanh riêng biệt cho UI
-    btnClick: new Audio('button.wav'), // Âm thanh cho nút bấm
-    labelClick: new Audio('piece-click.mp3.mov'),  // Âm thanh cho các nhãn (Label)
-    check: new Audio('check.mp3'),   
-    castle: new Audio('move.mp3'),
-    illegal: new Audio('illegal.wav')   
+    btnClick: new Audio('sounds/button.wav'), // Âm thanh cho nút bấm
+    labelClick: new Audio('sounds/piece-click.mp3.mov'),  // Âm thanh cho các nhãn (Label)
+    check: new Audio('sounds/check.mp3'),   
+    castle: new Audio('sounds/move.mp3'),
+    illegal: new Audio('sounds/illegal.wav')   
 };
 
 sounds.labelClick.volume = 0.3;
@@ -165,6 +169,13 @@ function onDragStart(source, piece) {
         // Sau khi kết thúc ván, cho phép cầm bất cứ quân nào để phân tích
         return true; 
     }
+
+    if (isOnline) {
+    if (game.turn() !== myRole) return false;
+    if ((myRole === 'w' && piece.search(/^b/) !== -1) ||
+        (myRole === 'b' && piece.search(/^w/) !== -1)) return false;
+    return true;
+    }
     
     // Logic cũ cho khi đang trong ván đấu...
     if (currentMode === 'human') {
@@ -202,6 +213,7 @@ function isValidPremove(source, target) {
 
 function onDrop(source, target) {
     if (source === target) return;
+    if (isOnline && game.turn() !== myRole) return 'snapback';
 
     var move = game.move({ from: source, to: target, promotion: 'q' });
 
@@ -214,6 +226,9 @@ function onDrop(source, target) {
     }
 
     if (move !== null && gameActive) {
+            if (isOnline) {
+            socket.emit('move', { roomId: roomId, move: move });
+        }
         removeHighlights();
         premove = null;
         $('.square-55d63').removeClass('premove-highlight');
@@ -707,13 +722,15 @@ function resetGame() {
         draggable: true,
         position: 'start',
         orientation: playerSide === 'w' ? 'white' : 'black', // Xoay bàn cờ
-        pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+        pieceTheme: 'mypiece/{piece}.png',
         onDragStart: onDragStart,
         onDrop: onDrop,
         onSnapEnd: function() { board.position(game.fen()); }
     });
     
     resizeBoard();
+
+
 
     // 5. Nếu chơi quân Đen với máy, máy (Trắng) sẽ đi trước
     if (currentMode === 'computer' && playerSide === 'b') {
@@ -749,7 +766,7 @@ function resetGame() {
         draggable: true,
         position: 'start',
         orientation: playerSide === 'w' ? 'white' : 'black', // Xoay bàn cờ
-        pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+        pieceTheme: 'mypiece/{piece}.png',
         onDragStart: onDragStart,
         onDrop: onDrop,
         onSnapEnd: function() { board.position(game.fen()); }
@@ -763,6 +780,35 @@ function resetGame() {
     }
     premove = null;
     $('.square-55d63').removeClass('premove-highlight');
+
+    // CHƠI VỚI BẠN BÈ
+    if (currentMode === 'online') {
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    roomId = urlParams.get('room') || Math.random().toString(36).substring(2, 9);
+    
+    if (!window.location.search.includes('room')) {
+        const inviteLink = window.location.origin + window.location.pathname + '?room=' + roomId;
+        window.history.pushState({}, '', inviteLink);
+
+        // Hiển thị UI đẹp hơn thay vì alert
+        $('#gameStatus').html(
+            `⏳ Đang chờ bạn bè... <br>
+            <small style="font-size:12px; color: var(--accent-gold);">
+                Link mời: <a href="${inviteLink}" style="color:var(--accent-gold)" onclick="navigator.clipboard.writeText('${inviteLink}'); return false;">${inviteLink}</a>
+                <button onclick="navigator.clipboard.writeText('${inviteLink}'); this.textContent='✅ Đã chép!'" 
+                    style="margin-left:8px; font-size:11px; padding:2px 8px; cursor:pointer; background:var(--panel-color); color:var(--accent-gold); border:1px solid var(--accent-gold); border-radius:4px;">
+                    📋 Sao chép
+                </button>
+            </small>`
+        );
+    }
+    
+    socket.emit('joinRoom', roomId);
+    isOnline = true;
+} else {
+    isOnline = false;
+}
 
 }
 
@@ -1007,6 +1053,41 @@ $(document).ready(function() {
     }
 
     setTimeout(resetGame, 200);
+
+    socket.on('opponentMove', function(move) {
+    game.move(move);
+    board.position(game.fen());
+    handleMoveMade(move); // Gọi lại hàm xử lý âm thanh/log của bạn
+    });
+
+    socket.on('playerRole', function(role) {
+    myRole = role;
+    playerSide = role; // ← THÊM DÒNG NÀY để timer/logic nhận diện đúng phe
+    if (role === 'b') {
+        board.orientation('black');
+    } else {
+        board.orientation('white');
+    }
+    });
+
+    socket.on('startGame', function() {
+    gameActive = true;
+    $status.text("Ván đấu bắt đầu! Đến lượt Trắng");
+    playSound(sounds.notify);
+    });
+
+    socket.on('disconnect', function() {
+    if (isOnline && gameActive) {
+        endGame("ĐỐI THỦ ĐÃ THOÁT", "Bạn thắng vì đối thủ đã rời khỏi ván đấu.", "1-0");
+    }
+    });
+
+    socket.on('opponentLeft', function() {
+    if (isOnline && gameActive) {
+        endGame("ĐỐI THỦ ĐÃ THOÁT", "Bạn thắng vì đối thủ đã rời khỏi ván đấu.", "1-0");
+    }
+    });
+
 });
 
    
