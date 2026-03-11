@@ -38,6 +38,36 @@ body {
     
 }
 
+/* Video background container */
+.video-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -2;
+    overflow: hidden;
+}
+
+.video-background video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Dark overlay để giữ độ tương phản */
+.video-background::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(5, 10, 16, 0.65);  /* Thay đổi 0.65 */
+    z-index: 1;
+}
+
 /* --- ANIMATIONS (Giữ nguyên) --- */
 @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes fadeInLeft { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
@@ -281,6 +311,29 @@ body {
 .white-1e1d7 { background-color: var(--board-white) !important; color: #b58863; }
 .black-3c85d { background-color: var(--board-black) !important; color: #f0d9b5; }
 .dot { width: 14px; height: 14px; background: rgba(0,0,0,0.2); border-radius: 50%; margin: 40% auto; }
+
+/* --- CĂN CHỈNH QUÂN CỜ VÀO Ô 100PX (ĐÃ SỬA ĐÚNG) ---
+ * Chessboard.js đặt quân cờ bằng position: absolute (top:0, left:0, width:100%, height:100%)
+ * → Flexbox trên ô cha KHÔNG hoạt động với absolute positioning.
+ * → Giải pháp đúng: override trực tiếp top/left/width/height của ảnh quân cờ.
+ */
+
+/* Ô vuông phải là reference point cho absolute children */
+.square-55d63 {
+    position: relative !important;
+}
+
+/* Quân cờ: thu nhỏ 10% mỗi chiều và offset vào giữa → hiệu ứng padding 5% */
+.square-55d63 img {
+    position: absolute !important;
+    top: 10% !important;
+    left: 10% !important;
+    width: 80% !important;
+    height: 80% !important;
+    object-fit: contain !important;
+    pointer-events: none !important;
+    user-select: none !important;
+}
 
 /* --- RIGHT: SIDEBAR CARD --- */
 .sidebar-card {
@@ -842,3 +895,15 @@ html {
     opacity: 0.6;
     margin: 0;
 }
+
+.online-link-alert {
+    background: var(--panel-color);
+    border: 1px dashed var(--accent-gold);
+    padding: 10px;
+    margin-top: 10px;
+    font-size: 0.8rem;
+    word-break: break-all;
+    border-radius: 8px;
+    color: var(--text-primary);
+}
+
